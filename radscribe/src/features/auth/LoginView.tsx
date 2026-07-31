@@ -233,7 +233,7 @@ export default function LoginView() {
 
         {mode === "signup" && (
           <>
-            <fieldset>
+            <fieldset style={{display: "none"}}>
             <legend className={labelClass} style={labelStyle}>
               Account type
             </legend>
@@ -312,7 +312,7 @@ export default function LoginView() {
           className={inputClass}
           style={inputStyle}
         />
-        {mode === "signin" && (
+        {/* {mode === "signin" && (
           <>
             <label htmlFor="mfa-code" className={labelClass} style={labelStyle}>
               Authentication code (if enabled)
@@ -330,7 +330,7 @@ export default function LoginView() {
               style={inputStyle}
             />
           </>
-        )}
+        )} */}
         <label htmlFor="password" className={labelClass} style={labelStyle}>
           Password
         </label>
