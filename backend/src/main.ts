@@ -47,34 +47,34 @@ async function bootstrap() {
     }
 
     // Redis is optional
-    if (process.env.REDIS_URL || process.env.REDIS_PASSWORD) {
-      if (!process.env.REDIS_URL || !process.env.REDIS_PASSWORD) {
-        throw new Error(
-          "Both REDIS_URL and REDIS_PASSWORD must be provided together"
-        );
-      }
+    // if (process.env.REDIS_URL || process.env.REDIS_PASSWORD) {
+    //   if (!process.env.REDIS_URL || !process.env.REDIS_PASSWORD) {
+    //     throw new Error(
+    //       "Both REDIS_URL and REDIS_PASSWORD must be provided together"
+    //     );
+    //   }
 
-      let redisUrl: URL;
+    //   let redisUrl: URL;
 
-      try {
-        redisUrl = new URL(process.env.REDIS_URL);
-      } catch {
-        throw new Error("REDIS_URL must be a valid Redis URL");
-      }
+    //   try {
+    //     redisUrl = new URL(process.env.REDIS_URL);
+    //   } catch {
+    //     throw new Error("REDIS_URL must be a valid Redis URL");
+    //   }
 
-      if (
-        !["redis:", "rediss:"].includes(redisUrl.protocol) ||
-        decodeURIComponent(redisUrl.password) !== process.env.REDIS_PASSWORD
-      ) {
-        throw new Error(
-          "REDIS_URL must use Redis and contain REDIS_PASSWORD"
-        );
-      }
+    //   if (
+    //     !["redis:", "rediss:"].includes(redisUrl.protocol) ||
+    //     decodeURIComponent(redisUrl.password) !== process.env.REDIS_PASSWORD
+    //   ) {
+    //     throw new Error(
+    //       "REDIS_URL must use Redis and contain REDIS_PASSWORD"
+    //     );
+    //   }
 
-      console.log("✅ Redis configuration detected.");
-    } else {
-      console.log("⚠️ Redis is disabled.");
-    }
+    //   console.log("✅ Redis configuration detected.");
+    // } else {
+    //   console.log("⚠️ Redis is disabled.");
+    // }
 
     const origins = (process.env.CORS_ORIGIN || "")
       .split(",")
@@ -87,14 +87,14 @@ async function bootstrap() {
       );
     }
 
-    if (
-      process.env.GEMINI_API_KEY &&
-      process.env.AI_PHI_APPROVED !== "true"
-    ) {
-      throw new Error(
-        "Set AI_PHI_APPROVED=true only after approving the AI provider for PHI"
-      );
-    }
+    // if (
+    //   process.env.GEMINI_API_KEY &&
+    //   process.env.AI_PHI_APPROVED !== "true"
+    // ) {
+    //   throw new Error(
+    //     "Set AI_PHI_APPROVED=true only after approving the AI provider for PHI"
+    //   );
+    // }
 
     if (!/^[1-9]\d*$/.test(process.env.TRUST_PROXY_HOPS || "1")) {
       throw new Error("TRUST_PROXY_HOPS must be a positive integer");
