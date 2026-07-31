@@ -19,47 +19,83 @@ async function bootstrap() {
       "JWT_REFRESH_SECRET",
       "CREDENTIALS_KEY",
       "DATABASE_URL",
-      "REDIS_PASSWORD",
-      "REDIS_URL",
     ].filter((name) => !process.env[name]);
+
     if (missing.length > 0) {
-      throw new Error(`Refusing to start in production without: ${missing.join(", ")}`);
+      throw new Error(
+        `Refusing to start in production without: ${missing.join(", ")}`
+      );
     }
+
     const access = process.env.JWT_ACCESS_SECRET!;
     const refresh = process.env.JWT_REFRESH_SECRET!;
     const credentialKey = process.env.CREDENTIALS_KEY!;
-    const redisPassword = process.env.REDIS_PASSWORD!;
+
     const unsafeSecrets =
       access.length < 32 ||
       refresh.length < 32 ||
       credentialKey.length < 32 ||
-      redisPassword.length < 32 ||
       access === refresh ||
       access === "dev-access-secret-change-me" ||
       refresh === "dev-refresh-secret-change-me" ||
       credentialKey === "dev-credentials-key-32-bytes-long!!";
+
     if (unsafeSecrets) {
-      throw new Error("Refusing to start in production with weak, duplicate, or development secrets");
+      throw new Error(
+        "Refusing to start in production with weak, duplicate, or development secrets"
+      );
     }
-    let redisUrl: URL;
-    try {
-      redisUrl = new URL(process.env.REDIS_URL!);
-    } catch {
-      throw new Error("REDIS_URL must be a valid Redis URL");
+
+    // Redis is optional
+    if (process.env.REDIS_URL || process.env.REDIS_PASSWORD) {
+      if (!process.env.REDIS_URL || !process.env.REDIS_PASSWORD) {
+        throw new Error(
+          "Both REDIS_URL and REDIS_PASSWORD must be provided together"
+        );
+      }
+
+      let redisUrl: URL;
+
+      try {
+        redisUrl = new URL(process.env.REDIS_URL);
+      } catch {
+        throw new Error("REDIS_URL must be a valid Redis URL");
+      }
+
+      if (
+        !["redis:", "rediss:"].includes(redisUrl.protocol) ||
+        decodeURIComponent(redisUrl.password) !== process.env.REDIS_PASSWORD
+      ) {
+        throw new Error(
+          "REDIS_URL must use Redis and contain REDIS_PASSWORD"
+        );
+      }
+
+      console.log("✅ Redis configuration detected.");
+    } else {
+      console.log("⚠️ Redis is disabled.");
     }
-    if (
-      !["redis:", "rediss:"].includes(redisUrl.protocol) ||
-      decodeURIComponent(redisUrl.password) !== redisPassword
-    ) {
-      throw new Error("REDIS_URL must use Redis and contain REDIS_PASSWORD");
-    }
-    const origins = (process.env.CORS_ORIGIN || "").split(",").map((origin) => origin.trim());
+
+    const origins = (process.env.CORS_ORIGIN || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+
     if (!origins.length || origins.some((origin) => !origin.startsWith("https://"))) {
-      throw new Error("Production CORS_ORIGIN must contain explicit HTTPS origins");
+      throw new Error(
+        "Production CORS_ORIGIN must contain explicit HTTPS origins"
+      );
     }
-    if (process.env.GEMINI_API_KEY && process.env.AI_PHI_APPROVED !== "true") {
-      throw new Error("Set AI_PHI_APPROVED=true only after approving the AI provider for PHI");
+
+    if (
+      process.env.GEMINI_API_KEY &&
+      process.env.AI_PHI_APPROVED !== "true"
+    ) {
+      throw new Error(
+        "Set AI_PHI_APPROVED=true only after approving the AI provider for PHI"
+      );
     }
+
     if (!/^[1-9]\d*$/.test(process.env.TRUST_PROXY_HOPS || "1")) {
       throw new Error("TRUST_PROXY_HOPS must be a positive integer");
     }
