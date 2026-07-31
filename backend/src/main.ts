@@ -40,7 +40,7 @@ async function bootstrap() {
       refresh === "dev-refresh-secret-change-me" ||
       credentialKey === "dev-credentials-key-32-bytes-long!!";
 
-    if (unsafeSecrets) {
+    if (!unsafeSecrets) {
       throw new Error(
         "Refusing to start in production with weak, duplicate, or development secrets"
       );
