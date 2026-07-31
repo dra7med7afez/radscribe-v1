@@ -1,0 +1,185 @@
+# RadScribe production stack.
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Only Caddy is exposed to the internet (80/443, automatic HTTPS).
+# MySQL lives on an internal network with no published ports.
+# Redis provides shared request throttling across API instances.
+
+name: radscribe-prod
+
+services:
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    networks: [edge]
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    networks: [edge]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  api:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      # override anything host-specific here; DB host is the compose service
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      CORS_ORIGIN: ${CORS_ORIGIN:?set CORS_ORIGIN}
+      NODE_ENV: production
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             node dist/src/main.js"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, internal]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Run once on a new environment with:
+  # docker compose --profile bootstrap run --rm bootstrap
+  # Keeping this outside the API startup prevents an accidental rollout from
+  # recreating privileged accounts or altering starter content.
+  bootstrap:
+    build:
+      context: ../backend
+    profiles: ["bootstrap"]
+    env_file: .env.production
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      NODE_ENV: production
+    command: >
+      sh -c "npx prisma migrate deploy && node dist/prisma/seed.js"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # The internal network reaches MySQL; edge provides outbound access to the
+    # private object store and optional failure webhook.
+    networks: [internal, edge]
+
+  mysql:
+    image: mysql:8.4.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-radscribe}
+      MYSQL_USER: ${MYSQL_USER:-radscribe}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+    # NO published ports — internal network only.
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+
+  redis:
+    image: redis:8.2.8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", "", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    networks: [internal]
+
+  # Nightly local logical backup. An encrypted, monitored OFFSITE replication
+  # target is a mandatory deployment gate; this volume alone is not recovery.
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    restart: unless-stopped
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD}
+      BACKUP_S3_URI: ${BACKUP_S3_URI:?set BACKUP_S3_URI}
+      AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID:?set BACKUP_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET_ACCESS_KEY:?set BACKUP_AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${BACKUP_AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${BACKUP_AWS_ENDPOINT_URL:-}
+      BACKUP_SSE: ${BACKUP_SSE:-AES256}
+      BACKUP_FAILURE_WEBHOOK_URL: ${BACKUP_FAILURE_WEBHOOK_URL:-}
+    volumes:
+      - backups:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M%S)
+          file=/backups/radscribe-$$ts.sql.gz
+          if mysqldump -h mysql -u root --single-transaction --routines \
+              ${MYSQL_DATABASE:-radscribe} | gzip > $$file &&
+              aws s3 cp $$file $${BACKUP_S3_URI%/}/radscribe-$$ts.sql.gz \
+                --sse "$$BACKUP_SSE"; then
+            touch /backups/.last-success
+            echo "backup uploaded: radscribe-$$ts.sql.gz"
+          else
+            echo "backup FAILED at $$ts" >&2
+            rm -f $$file
+            if [ -n "$$BACKUP_FAILURE_WEBHOOK_URL" ]; then
+              wget -qO- --post-data="RadScribe backup failed at $$ts" \
+                "$$BACKUP_FAILURE_WEBHOOK_URL" >/dev/null 2>&1 || true
+            fi
+          fi
+          find /backups -name '*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "find /backups/.last-success -mmin -1560 -print -quit | grep -q ."]
+      interval: 30m
+      timeout: 10s
+      retries: 2
+      start_period: 2m
+
+networks:
+  edge:
+  internal:
+    internal: true
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:
+  backups:

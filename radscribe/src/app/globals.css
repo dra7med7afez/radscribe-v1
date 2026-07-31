@@ -1,0 +1,340 @@
+@import "tailwindcss";
+
+/* ============================================================
+   RadScribe design system (§2) — Apple-inspired
+   Light = warm beige canvas + white floating cards.
+   Dark  = near-black bg + gray cards. efe9dd
+   ============================================================ */
+
+/* Chrome (sidebar + Scribe panel) = --canvas (soft beige / near-black).
+   Cards + report editor = --panel / --page (white / gray).
+   Accent: teal-green in light, emerald in dark. */
+
+
+:root {
+  --canvas:#f5f1ea; --panel:#ffffff; --panel-2:#ece6db; --page:#ffffff;
+  --text:#1d1d1f; --text-muted:#6e6e73; --text-subtle:#9a958c;
+  --accent:#3874FF; --accent-2:#000000; --accent-soft:rgba(13,148,136,.12);
+  --abnormal:#b45309; --abnormal-soft:rgba(217,119,6,.12); --abnormal-bar:#d97706;
+  --inserted-soft:rgba(56,116,255,.08); --inserted-ring:rgba(56,116,255,.16);
+  --hover:rgba(38,30,12,.05); --active:rgba(38,30,12,.08); --ring:rgba(38,30,12,.09);
+  --handle:#cfc8b8;
+  --shadow-card: none;
+  --shadow-pop: none;
+  --shadow-float: none;
+  --shadow-float:none;
+}
+
+.dark {
+  --canvas:#191a1b; --panel:#121314; --panel-2:#161718; --page:#121314;
+  --text:#f5f5f7; --text-muted:#a1a1a6; --text-subtle:#7d7d83;
+  --accent:#3874FF; --accent-2:#ffffff;   --accent-soft: rgba(40, 69, 214, 0.16);
+  --abnormal:#fbbf24; --abnormal-soft:rgba(251,191,36,.12); --abnormal-bar:#f59e0b;
+  --inserted-soft:rgba(56,116,255,.16); --inserted-ring:rgba(56,116,255,.28);
+  --hover:rgba(255,255,255,.06); --active:rgba(255,255,255,.1); --ring:rgba(255,255,255,.09);
+  --handle:#46464b;
+  --shadow-card: none;
+  --shadow-pop: none;
+  --shadow-float: none;
+  --shadow-float:none;
+}
+* { box-sizing: border-box; }
+
+html, body {
+  padding: 0;
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--accent-soft); }
+
+/* Scrollbars — subtle, Apple-ish */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ring); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Animations / utilities ---------- */
+@keyframes animate-in-kf { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.animate-in { animation: animate-in-kf .18s ease-out; }
+
+@keyframes caret-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+.caret { display:inline-block; width:2px; height:1em; background: var(--accent); margin-left:1px; vertical-align:text-bottom; animation: caret-blink 1s step-end infinite; }
+
+@keyframes eq-bounce { 0%,100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+.eq-bar { display:inline-block; width:3px; border-radius:2px; background: var(--accent); transform-origin: bottom; animation: eq-bounce .9s ease-in-out infinite; }
+
+@keyframes mic-live-pulse { 0% { box-shadow: 0 0 0 0 rgba(229,72,77,.5); } 70% { box-shadow: 0 0 0 14px rgba(229,72,77,0); } 100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); } }
+.mic-live { animation: mic-live-pulse 1.6s ease-out infinite; }
+
+/* Modern hero mic */
+@keyframes mic-ripple{0%{transform:scale(.92);opacity:.5}100%{transform:scale(1.9);opacity:0}}
+.mic-ripple{position:absolute;inset:0;border-radius:9999px;border:2px solid currentColor;pointer-events:none;animation:mic-ripple 1.8s ease-out infinite}
+@keyframes mic-breathe{0%,100%{opacity:.18;transform:scale(1)}50%{opacity:.3;transform:scale(1.06)}}
+.mic-breathe{animation:mic-breathe 3.4s ease-in-out infinite}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin .8s linear infinite; }
+
+/* Toolbar "box around text" + inline images (work in TipTap AND findings) */
+/* One rectangle around the whole selected block (block-level, not per-line).
+   box-sizing + text-indent:0 keep the text fully inside with even side padding. */
+.report-doc .text-box,.ProseMirror .text-box{display:block;box-sizing:border-box;border:1px solid var(--text);border-radius:6px;padding:8px 14px;margin:8px 0;text-indent:0}
+.report-doc .text-box>*,.ProseMirror .text-box>*{text-indent:0;margin-left:0;margin-right:0}
+.report-doc .text-box>*:first-child,.ProseMirror .text-box>*:first-child{margin-top:0}
+.report-doc .text-box>*:last-child,.ProseMirror .text-box>*:last-child{margin-bottom:0}
+.report-doc img,.ProseMirror img{max-width:100%;height:auto;border-radius:6px;margin:4px 0}
+.ProseMirror img.ProseMirror-selectednode{outline:2px solid var(--accent)}
+
+/* ---------- Report document ---------- */
+.report-doc { color: var(--text); }
+.report-doc.italic-default .report-prose, .report-doc.italic-default [data-rich] { font-style: italic; }
+
+.report-prose ul, .report-prose ol, [data-rich] ul, [data-rich] ol,
+.rd-doc ul, .rd-doc ol { margin: .25rem 0; padding-left: 1.4rem; }
+.report-prose ul, [data-rich] ul, .rd-doc ul { list-style: disc; }
+.report-prose ol, [data-rich] ol, .rd-doc ol { list-style: decimal; }
+.report-prose p, [data-rich] p { margin: .25rem 0; }
+
+/* Nested bullet lists cycle their marker by depth (Word's default look)… */
+.report-prose ul ul, [data-rich] ul ul, .rd-doc ul ul { list-style: circle; }
+.report-prose ul ul ul, [data-rich] ul ul ul, .rd-doc ul ul ul { list-style: square; }
+/* …unless the list carries an explicit marker from the toolbar's bullet
+   library (the bulletList node's listStyle attr → data-list-style). */
+ul[data-list-style="disc"] { list-style: disc; }
+ul[data-list-style="circle"] { list-style: circle; }
+ul[data-list-style="square"] { list-style: square; }
+ul[data-list-style="square-hollow"] > li::marker { content: "▫\00a0\00a0"; }
+ul[data-list-style="triangle"] > li::marker { content: "▲\00a0\00a0"; font-size: .85em; }
+ul[data-list-style="dash"] > li::marker { content: "–\00a0\00a0"; }
+ul[data-list-style="arrow"] > li::marker { content: "→\00a0\00a0"; }
+ul[data-list-style="diamond"] > li::marker { content: "◆\00a0\00a0"; font-size: .85em; }
+
+/* Lists created by Tab/Shift-Tab do not always carry an explicit attribute.
+   They inherit the selected report hierarchy until the user assigns a
+   one-off marker from the bullet library. */
+.rd-doc > ul:not([data-list-style]) > li::marker {
+  content: var(--rd-l0-glyph, "\2022") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-l0-scale, 1));
+}
+.rd-doc > ul li > ul:not([data-list-style]) > li::marker {
+  content: var(--rd-l1-glyph, "\25e6") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-l1-scale, 1));
+}
+.rd-doc > ul li > ul:not([data-list-style]) li > ul:not([data-list-style]) > li::marker {
+  content: var(--rd-l2-glyph, "\25aa") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-l2-scale, 1));
+}
+
+/* TipTap placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-subtle);
+  pointer-events: none;
+  height: 0;
+}
+.ProseMirror:focus { outline: none; }
+
+[contenteditable]:focus { outline: none; }
+[contenteditable][data-empty="true"]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+/* Range input accent */
+input[type="range"] { accent-color: var(--accent); }
+
+
+/* ---------- report-doc: the single-document report editor ---------- */
+/* The whole report is ONE ProseMirror doc; these rules draw the report's
+   structure (bullets, organ labels, subpoint indents) as chrome around real
+   editable text, so selection/caret/undo flow across everything.
+   Layout follows Word's list model: the bullet sits in a fixed-width gutter
+   (hanging indent), so wrapped lines align under the TEXT, not the bullet. */
+
+.rd-doc { outline: none; }
+
+/* The section label is real document text (sectionHeading), not a form field —
+   the caret runs into it and renaming is just typing. Styled to read as the
+   section header it replaced. */
+.rd-section-heading {
+  margin: 0 0 0.5rem;
+  font-family: inherit;
+  font-size: 1.08em;
+  font-style: inherit;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: inherit;
+  color: var(--text);
+}
+/* an unnamed section still needs a click target and a hint */
+.rd-section-heading:empty::before {
+  content: "Section name";
+  color: var(--text-subtle);
+}
+
+/* The row being dragged (dnd-kit). Its neighbours slide out of the way on
+   their own transition, which is the drop indicator — so the row itself only
+   needs to read as "picked up". */
+.rd-finding-row.rd-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+/* text selection must not paint while a row is being dragged over */
+.rd-finding-row.rd-dragging ::selection {
+  background: transparent;
+}
+
+/* ---- findings are REAL nested lists (TipTap BulletList / ListItem) ---- */
+/* The bullet is the li's native ::marker — no decorative pseudo-elements.
+   Glyphs come from the --rd-* vars the section sets (Settings / list gallery);
+   bulletScale maps to the marker's font-size. */
+
+ul.rd-finding-list {
+  margin: 0;
+  padding-left: 1.6em;
+  list-style: disc;
+}
+/* NB: TipTap inserts a contentDOM div between the node view's element and the
+   document children, so "body > ul" never matches — ul.rd-finding-list:not(li ul)
+   is how "the section's top-level list" is selected. */
+ul.rd-finding-list:not(li ul) > li { margin: 0.25em 0; }
+li.node-finding::marker {
+  color: var(--text);
+  content: var(--rd-l0-glyph, "\2022") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-l0-scale, 1));
+}
+
+/* nested rows (subpoints): smaller, muted marker; the glyph cycles through the
+   three-shape hierarchy — parameter, organ, finding — exactly like the old
+   multilevel list, but the nesting itself is real list structure now */
+ul.rd-finding-list ul.rd-finding-list {
+  font-size: 0.94em;
+  margin: 0.1em 0;
+}
+ul.rd-finding-list ul.rd-finding-list > li.node-finding::marker {
+  color: var(--text-muted);
+  content: var(--rd-sub-glyph, "\25E6") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-sub-scale, 1));
+}
+ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list > li.node-finding::marker {
+  content: var(--rd-organ-glyph, "\2022") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-organ-scale, 1));
+}
+ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list > li.node-finding::marker {
+  content: var(--rd-finding-glyph, "\2013") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-finding-scale, 1));
+}
+ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list ul.rd-finding-list > li.node-finding::marker {
+  content: var(--rd-sub-glyph, "\25E6") "\00a0\00a0";
+  font-size: calc(1em * var(--rd-sub-scale, 1));
+}
+
+/* finding lines inside the li */
+.rd-finding .rd-heading,
+.rd-finding .rd-item { margin: 0; }
+
+/* organ label: bold with a bold colon */
+.rd-finding .rd-heading { font-weight: 700; }
+.rd-finding .rd-heading::after { content: ":"; font-weight: 700; }
+.rd-finding[data-empty="true"] .rd-heading::after { content: ""; }
+
+/* single-line finding: "• Organ: text" — heading and text flow inline */
+.rd-finding.rd-single .rd-heading,
+.rd-finding.rd-single .rd-item { display: inline; }
+.rd-finding.rd-single .rd-heading + .rd-item { font-weight: 400; margin-left: 0.35em; }
+/* multi-line finding: extra lines indent under the first */
+.rd-finding.rd-multi .rd-item ~ .rd-item { margin-left: 1.6em; }
+
+/* A finding that keeps its content in its parameters has an empty normal line.
+   It stays in the document so the item's id survives every edit, but renders as
+   nothing — no phantom empty line. convert.ts derives the flag from the line's
+   own emptiness, so it lifts the moment the line has text. */
+.rd-doc .rd-finding .rd-item[data-hidden="true"] { display: none; }
+
+/* Word-style border on a boxed finding line (Box tool) */
+.rd-item[data-boxed="true"] {
+  display: block;
+  box-sizing: border-box;
+  border: 1px solid var(--text);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin: 6px 0;
+}
+
+/* abnormal row highlight (was an inner flex div before the li rewrite) */
+.rd-finding-row.rd-abnormal {
+  background: var(--abnormal-soft);
+  border-left: 3px solid var(--abnormal-bar);
+  border-radius: 10px;
+  padding: 2px 6px 2px 8px;
+}
+
+/* ordered section styles (decimal / alpha / roman): native list numbering —
+   the list-item counter stays correct when rows are dragged, added or deleted */
+.rd-section[data-bullet-style="decimal"] ul.rd-finding-list:not(li ul) > li.node-finding::marker {
+  content: counter(list-item) ".\00a0\00a0"; font-size: 1em;
+}
+.rd-section[data-bullet-style="lower-alpha"] ul.rd-finding-list:not(li ul) > li.node-finding::marker {
+  content: counter(list-item, lower-alpha) ".\00a0\00a0"; font-size: 1em;
+}
+.rd-section[data-bullet-style="upper-roman"] ul.rd-finding-list:not(li ul) > li.node-finding::marker {
+  content: counter(list-item, upper-roman) ".\00a0\00a0"; font-size: 1em;
+}
+.rd-section[data-bullet-style="lower-roman"] ul.rd-finding-list:not(li ul) > li.node-finding::marker {
+  content: counter(list-item, lower-roman) ".\00a0\00a0"; font-size: 1em;
+}
+
+
+/* placeholder for empty prose paragraphs inside sections */
+.rd-doc .rd-section p.is-empty:only-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-subtle);
+  pointer-events: none;
+  height: 0;
+}
+
+/* drag feedback while a finding row is lifted */
+.rd-finding-row.ProseMirror-selectednode { opacity: 0.55; }
+
+/* ---------- continuous report document (report-editor) ---------- */
+/* Headings ARE the sections now: the same section-header look, with the
+   old inter-section gap (mb-7 = 1.75rem) carried by the heading itself. */
+.rd-doc .rd-section-heading { margin-top: 1.75rem; }
+.rd-doc .rd-section-heading:first-child { margin-top: 0; }
+
+/* the node being dragged (same dim as the old finding-row drag) */
+.rd-doc .rd-dragging { opacity: 0.55; }
+.rd-doc .rd-dragging ::selection { background: transparent; }
+
+/* placeholder for the empty paragraph right under a heading (an empty
+   section body) — same treatment as the old per-section placeholder */
+.rd-doc .rd-section-heading + p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-subtle);
+  pointer-events: none;
+  height: 0;
+}
+
+/* dictation-inserted content: paragraphs the structuring pipeline wrote
+   (prose and finding lines alike) carry data-inserted via ReportParagraph
+   and render as a soft highlight box, so it's obvious what the AI added */
+.rd-doc p[data-inserted="true"] {
+  background: var(--inserted-soft);
+  box-shadow: 0 0 0 1px var(--inserted-ring);
+  border-radius: 8px;
+  padding: 3px 10px;
+  margin: 4px 0;
+}

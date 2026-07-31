@@ -1,0 +1,579 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id           String        @id
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  auditLogs    AuditLog[]
+  integrations Integration[]
+  patients     Patient[]
+  reports      Report[]
+  subscription Subscription?
+  templates    Template[]
+  users        User[]
+}
+
+model User {
+  id                   String             @id @default(uuid())
+  email                String             @unique
+  name                 String?
+  passwordHash         String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  active               Boolean            @default(true)
+  mustChangePassword   Boolean            @default(false)
+  settings             Json?
+  googleId             String?            @unique
+  accountType          AccountType        @default(INDIVIDUAL)
+  organizationName     String?
+  organizationId       String
+  authVersion          Int                @default(0)
+  usageSubscriptionId  String?
+  mfaEnabled           Boolean            @default(false)
+  mfaSecretEnc         String?            @db.Text
+  aiUsage              AiUsage[]
+  auditLogs            AuditLog[]
+  dictations           DictationSession[]
+  integrations         Integration[]
+  notifications        Notification[]
+  patients             Patient[]
+  refreshTokens        RefreshToken[]
+  reports              Report[]
+  reportEvents         ReportEvent[]
+  usageEvents          ReportUsageEvent[]
+  signedReportVersions ReportVersion[]    @relation("ReportVersionSigner")
+  ownedSubscription    Subscription?      @relation("OwnedSubscription")
+  templates            Template[]
+  usageAdjustmentsMade UsageAdjustment[]  @relation("UsageAdjustmentActor")
+  organization         Organization       @relation(fields: [organizationId], references: [id])
+  usageSubscription    Subscription?      @relation("UsageSubscriptionMembers", fields: [usageSubscriptionId], references: [id])
+  roles                UserRole[]
+
+  @@index([organizationId])
+  @@index([usageSubscriptionId])
+}
+
+model Plan {
+  id                   String         @id @default(uuid())
+  code                 PlanCode       @unique
+  name                 String
+  description          String?        @db.Text
+  monthlyPriceCents    Int?
+  yearlyPriceCents     Int?
+  currency             String         @default("USD")
+  defaultReportLimit   Int?
+  usageInterval        UsageInterval  @default(MONTHLY)
+  isEnterprise         Boolean        @default(false)
+  isActive             Boolean        @default(true)
+  features             Json?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  pendingSubscriptions Subscription[] @relation("PendingPlan")
+  subscriptions        Subscription[] @relation("CurrentPlan")
+}
+
+model Subscription {
+  id                       String             @id @default(uuid())
+  ownerUserId              String?            @unique
+  ownerOrganizationId      String?            @unique
+  planId                   String
+  status                   SubscriptionStatus @default(ACTIVE)
+  billingCycle             BillingCycle       @default(NONE)
+  currentPeriodStart       DateTime
+  currentPeriodEnd         DateTime?
+  usageAnchorAt            DateTime
+  customReportLimit        Int?
+  cancelAtPeriodEnd        Boolean            @default(false)
+  pendingPlanId            String?
+  pendingBillingCycle      BillingCycle?
+  pendingCustomReportLimit Int?
+  pendingChangeAt          DateTime?
+  provider                 String?
+  providerCustomerId       String?            @unique
+  providerSubscriptionId   String?            @unique
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  usageEvents              ReportUsageEvent[]
+  ownerOrganization        Organization?      @relation(fields: [ownerOrganizationId], references: [id], onDelete: Restrict)
+  ownerUser                User?              @relation("OwnedSubscription", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  pendingPlan              Plan?              @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: Restrict)
+  plan                     Plan               @relation("CurrentPlan", fields: [planId], references: [id])
+  usagePeriods             UsagePeriod[]
+  members                  User[]             @relation("UsageSubscriptionMembers")
+
+  @@index([planId, status])
+  @@index([pendingPlanId], map: "Subscription_pendingPlanId_fkey")
+}
+
+model UsagePeriod {
+  id              String             @id @default(uuid())
+  subscriptionId  String
+  periodStart     DateTime
+  periodEnd       DateTime?
+  baseReportLimit Int
+  reportsUsed     Int                @default(0)
+  bonusReports    Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  usageEvents     ReportUsageEvent[]
+  adjustments     UsageAdjustment[]
+  subscription    Subscription       @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([subscriptionId, periodStart])
+  @@index([subscriptionId, periodEnd])
+}
+
+model ReportUsageEvent {
+  id                   String           @id @default(uuid())
+  userId               String
+  reportId             String
+  subscriptionId       String
+  usagePeriodId        String
+  eventType            UsageEventType   @default(REPORT_CREDIT)
+  status               UsageEventStatus @default(RESERVED)
+  reservationExpiresAt DateTime?
+  consumedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  report               Report           @relation(fields: [reportId], references: [id])
+  subscription         Subscription     @relation(fields: [subscriptionId], references: [id])
+  usagePeriod          UsagePeriod      @relation(fields: [usagePeriodId], references: [id])
+  user                 User             @relation(fields: [userId], references: [id])
+
+  @@unique([reportId, eventType])
+  @@index([usagePeriodId, status])
+  @@index([userId, createdAt])
+  @@index([subscriptionId], map: "ReportUsageEvent_subscriptionId_fkey")
+}
+
+model UsageAdjustment {
+  id                String      @id @default(uuid())
+  usagePeriodId     String
+  actorUserId       String
+  reportsUsedDelta  Int         @default(0)
+  bonusReportsDelta Int         @default(0)
+  reason            String      @db.VarChar(500)
+  createdAt         DateTime    @default(now())
+  actor             User        @relation("UsageAdjustmentActor", fields: [actorUserId], references: [id])
+  usagePeriod       UsagePeriod @relation(fields: [usagePeriodId], references: [id])
+
+  @@index([usagePeriodId, createdAt])
+  @@index([actorUserId], map: "UsageAdjustment_actorUserId_fkey")
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id       String           @id @default(uuid())
+  action   String
+  resource String
+  roles    RolePermission[]
+
+  @@unique([action, resource])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "UserRole_roleId_fkey")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "RolePermission_permissionId_fkey")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Template {
+  id             String            @id @default(uuid())
+  slug           String?           @unique
+  name           String
+  modality       String
+  bodyPart       String
+  ownerId        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organizationId String?
+  description    String?           @db.Text
+  version        Int               @default(1)
+  document       Json?
+  editorSettings Json?
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner          User?             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  sections       TemplateSection[]
+
+  @@index([organizationId])
+  @@index([ownerId], map: "Template_ownerId_fkey")
+}
+
+model TemplateSection {
+  id               String            @id @default(uuid())
+  templateId       String
+  name             String
+  kind             SectionKind
+  grouped          Boolean           @default(false)
+  orderIndex       Int
+  defaultProse     String?           @db.Text
+  normalImpression String?           @db.Text
+  isConclusion     Boolean           @default(false)
+  bulletStyle      String?
+  findings         TemplateFinding[]
+  template         Template          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+model TemplateFinding {
+  id         String          @id @default(uuid())
+  sectionId  String
+  region     String
+  normalText String          @db.Text
+  orderIndex Int             @default(0)
+  children   Json?
+  subpoints  Json?
+  section    TemplateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+}
+
+model Report {
+  id               String             @id @default(uuid())
+  ownerId          String
+  patientId        String?
+  templateId       String?
+  studyDescription String
+  modality         String
+  bodyPart         String
+  clinicalInfo     String             @db.Text
+  status           ReportStatus       @default(DRAFT)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  organizationId   String
+  revision         Int                @default(0)
+  usageCountedAt   DateTime?
+  aiUsage          AiUsage[]
+  organization     Organization       @relation(fields: [organizationId], references: [id])
+  owner            User               @relation(fields: [ownerId], references: [id])
+  patient          Patient?           @relation(fields: [patientId], references: [id])
+  items            ReportItem[]
+  sections         ReportSection[]
+  usageEvents      ReportUsageEvent[]
+  versions         ReportVersion[]
+
+  @@index([organizationId, updatedAt])
+  @@index([ownerId])
+  @@index([patientId], map: "Report_patientId_fkey")
+}
+
+model ReportSection {
+  id         String      @id @default(uuid())
+  reportId   String
+  sectionId  String
+  name       String
+  kind       SectionKind
+  grouped    Boolean     @default(false)
+  orderIndex Int
+  html       String?     @db.Text
+  report     Report      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+model ReportItem {
+  id             String  @id @default(uuid())
+  reportId       String
+  sectionId      String
+  region         String
+  text           String  @db.Text
+  impressionLine String  @db.Text
+  abnormal       Boolean @default(false)
+  score          String?
+  images         Json?
+  orderIndex     Int     @default(0)
+  subpoints      Json?
+  report         Report  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+model ReportVersion {
+  id         String       @id @default(uuid())
+  reportId   String
+  status     ReportStatus
+  snapshot   Json
+  createdAt  DateTime     @default(now())
+  signedById String?
+  report     Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  signedBy   User?        @relation("ReportVersionSigner", fields: [signedById], references: [id], onDelete: Restrict)
+
+  @@index([reportId])
+  @@index([signedById], map: "ReportVersion_signedById_fkey")
+}
+
+model DictationSession {
+  id         String          @id @default(uuid())
+  userId     String
+  reportId   String?
+  transcript String          @db.Text
+  mode       DictationMode   @default(CONCISE)
+  status     DictationStatus @default(RECORDING)
+  createdAt  DateTime        @default(now())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "DictationSession_userId_fkey")
+}
+
+model AiUsage {
+  id                  String     @id @default(uuid())
+  task                AiTaskType
+  model               String
+  status              AiStatus
+  promptTokens        Int        @default(0)
+  outputTokens        Int        @default(0)
+  latencyMs           Int        @default(0)
+  createdAt           DateTime   @default(now())
+  userId              String?
+  reportId            String?
+  provider            String?
+  audioDurationMs     Int?
+  estimatedCostMicros BigInt?
+  currency            String?    @default("USD")
+  report              Report?    @relation(fields: [reportId], references: [id])
+  user                User?      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([reportId])
+}
+
+model ReportEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  title     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  kind      FileKind
+  filename  String
+  mimeType  String
+  size      Int      @default(0)
+  url       String?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  userId         String?
+  action         String
+  resource       String
+  meta           Json?
+  createdAt      DateTime      @default(now())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user           User?         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([userId], map: "AuditLog_userId_fkey")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType @default(INFO)
+  message   String           @db.Text
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "Notification_userId_fkey")
+}
+
+model Integration {
+  id             String            @id @default(uuid())
+  type           IntegrationType
+  name           String
+  status         IntegrationStatus @default(DISCONNECTED)
+  config         Json
+  credentialsEnc String?           @db.Text
+  enabled        Boolean           @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  ownerId        String
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  owner          User              @relation(fields: [ownerId], references: [id])
+
+  @@index([organizationId])
+  @@index([ownerId], map: "Integration_ownerId_fkey")
+}
+
+model Patient {
+  id               String        @id @default(uuid())
+  mrn              String
+  name             String
+  dob              String?
+  sex              String?
+  accession        String?
+  studyDescription String?
+  modality         String?
+  status           String?
+  source           PatientSource @default(LOCAL)
+  createdAt        DateTime      @default(now())
+  ownerId          String
+  organizationId   String
+  organization     Organization  @relation(fields: [organizationId], references: [id])
+  owner            User          @relation(fields: [ownerId], references: [id])
+  reports          Report[]
+
+  @@unique([organizationId, mrn])
+  @@index([ownerId])
+  @@index([organizationId, createdAt])
+}
+
+enum SectionKind {
+  PROSE
+  FINDINGS
+}
+
+enum ReportStatus {
+  DRAFT
+  PRELIMINARY
+  FINAL
+  ADDENDUM
+}
+
+enum DictationMode {
+  VERBATIM
+  CONCISE
+}
+
+enum DictationStatus {
+  RECORDING
+  TRANSCRIBING
+  DONE
+  CANCELLED
+}
+
+enum AiTaskType {
+  REWRITE
+  IMPRESSION
+  STRUCTURE
+  TRANSCRIBE
+  ANALYZE_TEMPLATE
+}
+
+enum AiStatus {
+  PENDING
+  SUCCESS
+  ERROR
+}
+
+enum FileKind {
+  TEMPLATE
+  IMAGE
+  AUDIO
+  OTHER
+}
+
+enum IntegrationType {
+  FHIR
+  HL7
+  DICOM
+  GENERIC
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum PatientSource {
+  INTEGRATION
+  LOCAL
+}
+
+enum AccountType {
+  INDIVIDUAL
+  ORGANIZATION
+}
+
+enum PlanCode {
+  FREE
+  PRO
+  ULTRA
+  ENTERPRISE
+}
+
+enum BillingCycle {
+  NONE
+  MONTHLY
+  YEARLY
+}
+
+enum UsageInterval {
+  MONTHLY
+  LIFETIME
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum UsageEventType {
+  REPORT_CREDIT
+}
+
+enum UsageEventStatus {
+  RESERVED
+  CONSUMED
+}

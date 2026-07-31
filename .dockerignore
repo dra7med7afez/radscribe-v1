@@ -1,0 +1,22 @@
+
+# Build-context filter for images built from the repository root
+# (deploy/Dockerfile.web). The backend image uses backend/ as its own
+# context and has its own backend/.dockerignore.
+
+.git
+**/node_modules
+**/.next
+**/dist
+**/tsconfig.tsbuildinfo
+
+# Secrets never enter an image or the build context.
+**/.env
+**/.env.*
+!**/.env.production.example
+!**/.env.local.example
+!**/.env.example
+
+# Not needed by the web image — keeps the context small.
+backend
+deploy/*.sh
+*.md

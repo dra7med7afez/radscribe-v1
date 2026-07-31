@@ -1,0 +1,23 @@
+# Dependencies / build output (also covered by per-app .gitignore)
+node_modules/
+dist/
+.next/
+out/
+
+# Environment & secrets — never commit
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Logs & OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# Local tool state
+.claude/settings.local.json
+
+# Database dumps / backups
+*.sql.gz
+backups/

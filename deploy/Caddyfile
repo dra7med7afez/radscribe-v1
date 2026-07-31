@@ -1,0 +1,27 @@
+# RadScribe reverse proxy — automatic HTTPS via Let's Encrypt.
+# DOMAIN comes from deploy/.env.production (e.g. radscribe.example.com).
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), geolocation=(), microphone=(self)"
+		# The Next.js request proxy emits the per-request nonce CSP. Do not
+		# overwrite it here with a static policy.
+		-Server
+	}
+
+	# Backend API — same origin, no CORS needed.
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	# Everything else — the Next.js app.
+	handle {
+		reverse_proxy web:3000
+	}
+}
